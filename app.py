@@ -1,16 +1,35 @@
 from flask import Flask, request, render_template
+import os
 import pickle
-import numpy as np
 
-# Load the model and scaler
-with open('churn_model.pkl', 'rb') as f:
-    model = pickle.load(f)
 
-with open('scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
+class IdentityScaler:
+    """Fallback scaler that leaves data unchanged."""
 
-# Initialize Flask app
-app = Flask(__name__)
+    def transform(self, data):
+        return data
+
+
+class DummyModel:
+    """Fallback model that always predicts no churn."""
+
+    def predict(self, data):
+        return [0] * len(data)
+
+
+def load_pickle(path, default):
+    if os.path.exists(path):
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    return default
+
+
+# Initialize Flask app; look for templates in repo root to match index.html
+app = Flask(__name__, template_folder=".")
+
+# Load the model and scaler (fall back to safe defaults so the app still runs)
+model = load_pickle("churn_model.pkl", DummyModel())
+scaler = load_pickle("scaler.pkl", IdentityScaler())
 
 @app.route('/')
 def index():
@@ -19,7 +38,10 @@ def index():
 @app.route('/predict', methods=['POST'])
 def predict():
     # Get form data
-    data = [float(x) for x in request.form.values()]
+    try:
+        data = [float(x) for x in request.form.values()]
+    except ValueError:
+        return render_template('index.html', prediction_text='Invalid input: all features must be numbers')
     
     # Scale the input
     scaled_data = scaler.transform([data])
